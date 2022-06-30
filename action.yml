@@ -1,0 +1,56 @@
+# Copyright (c) 2022 Cassius Pacheco
+# Licensed under Apache License v2.0
+
+name: 'GitHub Actions for SwiftFormat'
+description: 'A tool for formatting Swift code'
+author: 'Cassius Pacheco <cassius.op@icloud.com>'
+branding:
+  icon: 'align-justify'
+  color: 'blue'
+inputs:
+  swiftformat-version:
+    description: "A SwiftFormat version to use."
+    required: true
+    default: '0.49.11'
+  swiftformat-args:
+    description: "Arguments to SwiftFormat."
+    required: false
+  working-directory:
+    required: true
+    default: ''
+runs:
+  using: "composite"
+  steps:
+    - run: |
+        export SWIFTFORMAT_PATH="$(cd ${{ github.action_path }} && pwd -L)/SwiftFormat"
+        
+        echo SWIFTFORMAT_OS_VERSION_HASH="$(uname -prsv | openssl dgst -sha256 -binary | xxd -p -c 256)" >> $GITHUB_ENV
+        echo SWIFTFORMAT_PATH="$SWIFTFORMAT_PATH" >> $GITHUB_ENV
+        echo SWIFTFORMAT_PACKAGE_ARGS="--package-path "$SWIFTFORMAT_PATH" -c release --manifest-cache local --disable-index-store --use-integrated-swift-driver" >> $GITHUB_ENV
+      shell: bash
+    - run: |
+        git init -q "${{ env.SWIFTFORMAT_PATH }}"
+
+        pushd "${{ env.SWIFTFORMAT_PATH }}"
+        git remote add origin https://github.com/nicklockwood/SwiftFormat.git
+        git fetch --no-tags --prune --progress --no-recurse-submodules --depth 1 origin "${{ inputs.swiftformat-version }}"
+        git checkout --progress --force FETCH_HEAD
+        popd
+      shell: bash
+    - uses: actions/cache@v3
+      id: cache
+      with:
+        path: '${{ env.SWIFTFORMAT_PATH }}/.build'
+        key: cassiuspacheco-action-swiftformat-${{ runner.os }}-${{ env.SWIFTFORMAT_OS_VERSION_HASH }}-swift-${{ env.SWIFT_VERSION }}-${{ inputs.swiftformat-version }}
+        restore-keys: |
+          cassiuspacheco-action-swiftformat-${{ runner.os }}-${{ env.SWIFTFORMAT_OS_VERSION_HASH }}-swift-${{ env.SWIFT_VERSION }}-
+          cassiuspacheco-action-swiftformat-${{ runner.os }}-${{ env.SWIFTFORMAT_OS_VERSION_HASH }}-swift-
+    - name: swift build
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: swift package --package-path "$SWIFTFORMAT_PATH" reset && swift build $SWIFTFORMAT_PACKAGE_ARGS --product swiftformat
+      shell: bash
+    - name: swift run
+      run: ${{ github.action_path }}/swiftformat.sh ${{ inputs.swiftformat-args }}
+      shell: bash
+      working-directory: '${{ github.workspace }}/${{ inputs.working-directory }}'
+ 
